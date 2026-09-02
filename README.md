@@ -1,5 +1,2 @@
-# Ferramentas para Moodle
-https://lucasalb1609.github.io/moodle/
-
-## Preparação de Questionário para Importação no Moodle via GIFT
-https://lucasalb1609.github.io/moodle/questionario.html
+## Preparação de Questionário para Importação no Moodle via XML
+https://moodle-snowy.vercel.app/questionario.html
