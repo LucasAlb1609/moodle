@@ -1,3 +1,18 @@
+const MAPA_ROTULOS = {
+    '1': 'AS01',
+    '2': 'AA01',
+    '3': 'AS02',
+    '4': 'AA02',
+    '5': 'AS03',
+    '6': 'AA03',
+    '7': 'AS04',
+    '8': 'AA04',
+    '9': 'AS05',
+    '10': 'AA05',
+    'av': 'AD',
+    'noa': 'NOA'
+};
+
 const remover_excesso_de_espacos = (texto) => {
     return texto.replaceAll('  ', ' ').trim();
 
@@ -71,9 +86,9 @@ const ajustar_texto = (arr_entrada, competencia) => {
                 `${j}) `, `${j}. `, `${j}- `, `${j} - `, `${j}–`, `${j} – `,
             ].forEach((item) => {
                 if (arr_entrada[i].indexOf(item) === 0) {
-                    if (competencia.toLowerCase() === 'noa') arr_entrada[i] = arr_entrada[i].replace(item, `::NOA_Q${(j < 10) ? ('0') : ('')}${j}::`);
-                    if (competencia.toLowerCase() === 'av') arr_entrada[i] = arr_entrada[i].replace(item, `::AV_Q${(j < 10) ? ('0') : ('')}${j}::`);
-                    else arr_entrada[i] = arr_entrada[i].replace(item, `::C${(parseInt(competencia) < 10) ? ('0') : ('')}${competencia}_Q${(j < 10) ? ('0') : ('')}${j}::`);
+                    let prefixo = MAPA_ROTULOS[competencia] || 'Q';
+                    let numero_questao = (j < 10) ? '0' + j : j;
+                    arr_entrada[i] = arr_entrada[i].replace(item, `::${prefixo}_Q${numero_questao}::`);
                 }
             });
         }
@@ -94,7 +109,7 @@ const ajustar_texto = (arr_entrada, competencia) => {
     let primeira_ocorrencia = true;
     index = 0;
     while (index < arr_entrada.length) {
-        if (arr_entrada[index].indexOf('::C') === 0 || arr_entrada[index].indexOf('::AV') === 0 || arr_entrada[index].indexOf('::NOA') === 0) {
+        if (arr_entrada[index].startsWith('::')) {
             if (!primeira_ocorrencia) {
                 arr_entrada.splice(index, 0, '}');
                 arr_entrada.splice(index + 1, 0, '');
@@ -148,7 +163,7 @@ const gerar_moodle_xml = (arr_saida) => {
             // Localizar o fim do título (segundo par de ::).
             let fimTitulo = linha.indexOf('::', 2);
 
-            // Extrair o identificador da questão (ex: C01_Q01).
+            // Extrair o identificador da questão (ex: AA01_Q01).
             let titulo = linha.substring(2, fimTitulo);
 
             // Extrair o texto da pergunta que vem após o título.
@@ -326,9 +341,10 @@ const baixar_arquivo = () => {
     // Definir MIME type e extensão conforme o modo de exportação.
     let mimeType = checkbox_estilizar.checked ? 'text/xml' : 'text/plain';
     let extensao = checkbox_estilizar.checked ? 'xml' : 'txt';
+    let prefixo = MAPA_ROTULOS[select_competencia.value.toLowerCase()] || select_competencia.value;
 
     link.href = `data:${mimeType};charset=utf-8,` + encodeURIComponent(texto);
-    link.download = `questionario_${select_competencia.value}.${extensao}`;
+    link.download = `questionario_${prefixo}.${extensao}`;
 
     document.body.appendChild(link);
     link.click();
@@ -372,49 +388,58 @@ textarea_entrada.placeholder = [
     'Feedback alternativa 2',
 ].join('\n');
 
-textarea_saida.placeholder = [
-    '::C01_Q01::Texto da questão',
-    'Suporte da questão',
-    '{',
-    '=alternativa 1',
-    '#Feedback alternativa 1',
-    '~alternativa 2',
-    '#Feedback alternativa 2',
-    '}',
-    '',
-    '::C01_Q02::Texto da questão',
-    'Suporte da questão',
-    '{',
-    '=alternativa 1',
-    '#Feedback alternativa 1',
-    '~alternativa 2',
-    '#Feedback alternativa 2',
-    '}',
-    '',
-    '::C01_Q03::Texto da questão',
-    'Suporte da questão',
-    '~alternativa 1',
-    '#Feedback alternativa 1',
-    '~alternativa 2',
-    '#Feedback alternativa 2',
-    '}',
-    '',
-    '::C01_Q04::Texto da questão',
-    'Suporte da questão',
-    '{',
-    '=alternativa 1',
-    '#Feedback alternativa 1',
-    '~alternativa 2',
-    '#Feedback alternativa 2',
-    '}',
-].join('\n');
+const atualizar_placeholder = () => {
+    let valor_selecionado = select_competencia.value.toLowerCase();
+    let prefixo = MAPA_ROTULOS[valor_selecionado] || 'Q';
+
+    textarea_saida.placeholder = [
+        `::${prefixo}_Q01::Texto da questão`,
+        'Suporte da questão',
+        '{',
+        '=alternativa 1',
+        '#Feedback alternativa 1',
+        '~alternativa 2',
+        '#Feedback alternativa 2',
+        '}',
+        '',
+        `::${prefixo}_Q02::Texto da questão`,
+        'Suporte da questão',
+        '{',
+        '=alternativa 1',
+        '#Feedback alternativa 1',
+        '~alternativa 2',
+        '#Feedback alternativa 2',
+        '}',
+        '',
+        `::${prefixo}_Q03::Texto da questão`,
+        'Suporte da questão',
+        '~alternativa 1',
+        '#Feedback alternativa 1',
+        '~alternativa 2',
+        '#Feedback alternativa 2',
+        '}',
+        '',
+        `::${prefixo}_Q04::Texto da questão`,
+        'Suporte da questão',
+        '{',
+        '=alternativa 1',
+        '#Feedback alternativa 1',
+        '~alternativa 2',
+        '#Feedback alternativa 2',
+        '}'
+    ].join('\n');
+};
+
+// Atualiza imediatamente e também a cada mudança no select
+atualizar_placeholder();
+select_competencia.addEventListener('change', atualizar_placeholder);
 
 button_processar.addEventListener('click', () => {
 
     if (textarea_entrada.value !== '') {
 
         let arr_entrada = textarea_entrada.value.split('\n');
-        arr_entrada = ajustar_texto(arr_entrada, competencia.value.toLowerCase());
+        arr_entrada = ajustar_texto(arr_entrada, select_competencia.value.toLowerCase());
 
         // Gerar Moodle XML com HTML estilizado ou GIFT puro.
         if (checkbox_estilizar.checked) {
