@@ -92,16 +92,17 @@ const ajustar_texto = (arr_entrada, competencia) => {
 
     // Adicionar a competência ou NOA e, o número da questão.
     for (let i = 0; i < arr_entrada.length; i++) {
-        for (let j = 1; j <= 99; j++) {
-            [
-                `${j}) `, `${j}. `, `${j}- `, `${j} - `, `${j}–`, `${j} – `,
-            ].forEach((item) => {
-                if (arr_entrada[i].indexOf(item) === 0) {
-                    let prefixo = MAPA_ROTULOS[competencia] || 'Q';
-                    let numero_questao = (j < 10) ? '0' + j : j;
-                    arr_entrada[i] = arr_entrada[i].replace(item, `::${prefixo}_Q${numero_questao}::`);
-                }
-            });
+        // Regex para identificar início de questão: "1) ", "1. ", "QUESTÃO 08", "Questão 8", etc.
+        let regex = /^(?:quest[ãa]o\s+(0?[1-9]|[1-9][0-9])\s*|(0?[1-9]|[1-9][0-9])\s*[\)\.\-–]\s+)/i;
+        let match = arr_entrada[i].match(regex);
+        
+        if (match) {
+            let num = match[1] || match[2];
+            let j = parseInt(num, 10);
+            let prefixo = MAPA_ROTULOS[competencia] || 'Q';
+            let numero_questao = (j < 10) ? '0' + j : j;
+            
+            arr_entrada[i] = arr_entrada[i].replace(match[0], `::${prefixo}_Q${numero_questao}::`);
         }
     }
 
