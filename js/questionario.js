@@ -20,12 +20,23 @@ const remover_excesso_de_espacos = (texto) => {
 
 const ajustar_texto = (arr_entrada, competencia) => {
     
-    // Remover excesso de espaços e linhas vazias.
+    // Remover excesso de espaços, linhas vazias e marcações de nível de dificuldade.
     let index = 0;
     while (index < arr_entrada.length) {
         arr_entrada[index] = remover_excesso_de_espacos(arr_entrada[index]);
-        if (arr_entrada[index] === '') arr_entrada.splice(index, 1);
-        else index++;
+        
+        // Normalizar a linha (sem acentos e minúscula) para facilitar a busca
+        let linha_norm = arr_entrada[index].normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        
+        // Identificar se a linha é sobre dificuldade
+        let eh_dificuldade = linha_norm.includes('nivel de dificuldade') || 
+                             (linha_norm.includes('facil') && linha_norm.includes('medio') && linha_norm.includes('dificil'));
+
+        if (arr_entrada[index] === '' || eh_dificuldade) {
+            arr_entrada.splice(index, 1);
+        } else {
+            index++;
+        }
     }
 
     // Trocar o símbolo de igual (=) pelo código "&equals;"
