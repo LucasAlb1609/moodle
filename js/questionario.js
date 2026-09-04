@@ -20,12 +20,23 @@ const remover_excesso_de_espacos = (texto) => {
 
 const ajustar_texto = (arr_entrada, competencia) => {
     
-    // Remover excesso de espaços e linhas vazias.
+    // Remover excesso de espaços, linhas vazias e marcações de nível de dificuldade.
     let index = 0;
     while (index < arr_entrada.length) {
         arr_entrada[index] = remover_excesso_de_espacos(arr_entrada[index]);
-        if (arr_entrada[index] === '') arr_entrada.splice(index, 1);
-        else index++;
+        
+        // Normalizar a linha (sem acentos e minúscula) para facilitar a busca
+        let linha_norm = arr_entrada[index].normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        
+        // Identificar se a linha é sobre dificuldade
+        let eh_dificuldade = linha_norm.includes('nivel de dificuldade') || 
+                             (linha_norm.includes('facil') && linha_norm.includes('medio') && linha_norm.includes('dificil'));
+
+        if (arr_entrada[index] === '' || eh_dificuldade) {
+            arr_entrada.splice(index, 1);
+        } else {
+            index++;
+        }
     }
 
     // Trocar o símbolo de igual (=) pelo código "&equals;"
@@ -81,16 +92,17 @@ const ajustar_texto = (arr_entrada, competencia) => {
 
     // Adicionar a competência ou NOA e, o número da questão.
     for (let i = 0; i < arr_entrada.length; i++) {
-        for (let j = 1; j <= 99; j++) {
-            [
-                `${j}) `, `${j}. `, `${j}- `, `${j} - `, `${j}–`, `${j} – `,
-            ].forEach((item) => {
-                if (arr_entrada[i].indexOf(item) === 0) {
-                    let prefixo = MAPA_ROTULOS[competencia] || 'Q';
-                    let numero_questao = (j < 10) ? '0' + j : j;
-                    arr_entrada[i] = arr_entrada[i].replace(item, `::${prefixo}_Q${numero_questao}::`);
-                }
-            });
+        // Regex para identificar início de questão: "1) ", "1. ", "QUESTÃO 08", "Questão 10", etc.
+        let regex = /^(?:quest[ãa]o\s+(\d+)\s*|(\d+)\s*[\)\.\-–]\s+)/i;
+        let match = arr_entrada[i].match(regex);
+        
+        if (match) {
+            let num = match[1] || match[2];
+            let j = parseInt(num, 10);
+            let prefixo = MAPA_ROTULOS[competencia] || 'Q';
+            let numero_questao = (j < 10) ? '0' + j : j;
+            
+            arr_entrada[i] = arr_entrada[i].replace(match[0], `::${prefixo}_Q${numero_questao}::`);
         }
     }
 
