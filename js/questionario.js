@@ -92,8 +92,8 @@ const ajustar_texto = (arr_entrada, competencia) => {
 
     // Adicionar a competência ou NOA e, o número da questão.
     for (let i = 0; i < arr_entrada.length; i++) {
-        // Regex para identificar início de questão: "1) ", "1. ", "QUESTÃO 08", "Questão 8", etc.
-        let regex = /^(?:quest[ãa]o\s+(0?[1-9]|[1-9][0-9])\s*|(0?[1-9]|[1-9][0-9])\s*[\)\.\-–]\s+)/i;
+        // Regex para identificar início de questão: "1) ", "1. ", "QUESTÃO 08", "Questão 10", etc.
+        let regex = /^(?:quest[ãa]o\s+(\d+)\s*|(\d+)\s*[\)\.\-–]\s+)/i;
         let match = arr_entrada[i].match(regex);
         
         if (match) {
