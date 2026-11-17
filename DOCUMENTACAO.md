@@ -13,6 +13,7 @@
 9. [Pré-requisitos no Moodle](#9-pré-requisitos-no-moodle)
 10. [Exemplos Completos](#10-exemplos-completos)
 11. [Solução de Problemas](#11-solução-de-problemas)
+12. [Modo Seleção (AVA Prova, tema OBIN)](#12-modo-seleção-ava-prova-tema-obin)
 
 ---
 
@@ -48,6 +49,8 @@ moodle/
 ├── js/
 │   ├── index.js            # Script de redirecionamento
 │   └── questionario.js     # Lógica principal de conversão
+├── vendor/
+│   └── bootstrap.min.css   # Bootstrap 5.3.0-alpha3, cópia local (sem CDN)
 ├── DOCUMENTACAO.md          # Este arquivo
 └── README.md               # Informações básicas e links
 ```
@@ -222,15 +225,14 @@ O Moodle XML é o formato de importação mais completo do Moodle. Permite contr
 
 ---
 
-### `ajustar_texto(arr_entrada, competencia)`
+### `ajustar_texto(arr_entrada, prefixo)`
 
-**Localização**: `questionario.js`, linha 6  
 **Objetivo**: Função principal de conversão. Transforma texto livre em formato GIFT puro.
 
 | Parâmetro | Tipo | Descrição |
 |-----------|------|-----------|
 | `arr_entrada` | `string[]` | Linhas do texto original (split por `\n`) |
-| `competencia` | `string` | Valor da competência (`"1"` a `"10"`, `"av"`, `"noa"`) |
+| `prefixo` | `string` | Início do nome da questão: o rótulo da EAD (`AS01`, `AD`, `NOA`...) ou o código da seleção (`2027.1_SUB_POR_A03`) |
 | **Retorno** | `string[]` | Array de linhas no formato GIFT |
 
 **Etapas internas:**
@@ -239,35 +241,44 @@ O Moodle XML é o formato de importação mais completo do Moodle. Permite contr
 2. **Escaping** — Substitui caracteres especiais GIFT por entidades HTML (`=` → `&equals;`, `~` → `&tilde;`, etc.)
 3. **Marcação da alternativa correta** — Identifica variações da alternativa A (`A) `, `A. `, `A- `, etc.) e substitui por `=`
 4. **Marcação das incorretas** — Alternativas B a E recebem `~`
-5. **Feedbacks** — Linhas após alternativa recebem `#`
-6. **Título** — Numeração formatada como `::C01_Q01::`, `::AV_Q01::` ou `::NOA_Q01::`
-7. **Delimitadores** — Insere `{` e `}` ao redor das alternativas
+5. **Feedbacks** — A linha logo após uma alternativa recebe `#`, desde que não seja outra alternativa nem o início da próxima questão. O feedback é opcional.
+6. **Título** — Numeração formatada como `::AS01_Q01::`, `::AD_Q01::`, `::NOA_Q01::` ou `::2027.1_SUB_POR_A03_Q01::`
+7. **Delimitadores** — Insere `{` antes da primeira alternativa de cada questão e `}` ao fim dela
 
 ---
 
-### `gerar_moodle_xml(arr_saida)`
+### `extrair_questoes(arr_saida)`
 
-**Localização**: `questionario.js`, linha 128  
-**Objetivo**: Converte o GIFT puro (saída de `ajustar_texto`) em Moodle XML com HTML estilizado.
+**Objetivo**: Lê o GIFT puro (saída de `ajustar_texto`) e devolve cada questão como objeto:
+
+```javascript
+{ titulo: "AS01_Q01", textoLinhas: [...], alternativas: [{correta, texto, feedback}, ...] }
+```
+
+---
+
+### `conferir_questoes(questoes)`
+
+**Objetivo**: Usada no modo seleção antes de gerar o arquivo. Devolve a lista de problemas: questão sem exatamente uma alternativa correta, com menos de duas alternativas, ou com número repetido. Com algum problema, o arquivo não é gerado.
+
+---
+
+### `gerar_moodle_xml(questoes, opcoes)`
+
+**Objetivo**: Gera o Moodle XML com HTML estilizado.
 
 | Parâmetro | Tipo | Descrição |
 |-----------|------|-----------|
-| `arr_saida` | `string[]` | Array de linhas GIFT puro |
+| `questoes` | `object[]` | Saída de `extrair_questoes` |
+| `opcoes.categoria` | `string` | Pasta de destino (ex.: `top/Português/Assunto 03`); omitida, o arquivo não diz a pasta |
+| `opcoes.mostrarCodigo` | `boolean` | Põe o código da questão no início do enunciado (modo seleção) |
 | **Retorno** | `string` | String XML completa no formato Moodle XML |
 
-**Processamento em duas fases:**
-
-**Fase 1 — Extração estruturada** (linhas 130–219):
-- Percorre o array GIFT e extrai cada questão como objeto:
-  ```javascript
-  { titulo: "C01_Q01", textoLinhas: [...], alternativas: [{correta, texto, feedback}, ...] }
-  ```
-
-**Fase 2 — Construção XML** (linhas 222–293):
-- Gera o cabeçalho XML e a tag `<quiz>`
+- Gera o cabeçalho XML, a tag `<quiz>` e, com `categoria`, a questão do tipo `category`
 - Para cada questão:
   - Envolve o texto com `<div class="pergunta-texto">` dentro de `<questiontext format="html">`
   - Envolve cada alternativa com `<div class="resposta-card">` dentro de `<answer format="html">`
+  - Desfaz o escape do GIFT e escapa `&`, `<` e `>` (`texto_para_html`), para que "x<3" não vire uma tag
   - Usa `<![CDATA[...]]>` para isolar o HTML do parsing XML
   - Define `fraction="100"` para a correta e `fraction="0"` para incorretas
 
@@ -275,13 +286,13 @@ O Moodle XML é o formato de importação mais completo do Moodle. Permite contr
 
 ### `baixar_arquivo()`
 
-**Localização**: `questionario.js`, linha 320  
 **Objetivo**: Cria e dispara o download do arquivo com o conteúdo do textarea de saída.
 
 | Modo | MIME Type | Extensão | Exemplo |
 |------|-----------|----------|---------|
-| GIFT puro | `text/plain` | `.txt` | `questionario_1.txt` |
-| Moodle XML | `text/xml` | `.xml` | `questionario_1.xml` |
+| GIFT puro | `text/plain` | `.txt` | `questionario_AS01.txt` |
+| Moodle XML | `text/xml` | `.xml` | `questionario_AS01.xml` |
+| Seleção | `text/xml` | `.xml` | `selecao_2027.1_SUB_POR_A03.xml` |
 
 ---
 
@@ -509,3 +520,55 @@ Incorreto. Netuno é o quarto maior.
 | Numeração não detectada | Formato não suportado | Usar: `1) `, `1. `, `1- `, `1 - `, `1–`, ou `1 – ` |
 | Letras A/B/C duplicadas | Letras no HTML + numeração do Moodle | Normal — no modo XML, o Moodle adiciona suas letras (a,b,c) automaticamente |
 | Erro de importação XML | XML malformado | Verificar se o arquivo não foi editado manualmente e perdeu tags |
+
+---
+
+## 12. Modo Seleção (AVA Prova, tema OBIN)
+
+Para as provas dos processos seletivos do SisSel, aplicadas no **AVA Prova** (Moodle 5.3, tema OBIN). As questões ficam com a **mesma aparência** das da EAD-PE.
+
+### Como usar
+
+1. Em **Destino das questões**, escolha **Seleção: prova do AVA Prova (SisSel)**.
+2. Preencha **Seleção** (ex.: `2027.1`), **Modalidade**, **Matéria** e **Assunto** (01 a 10). Cada arquivo traz as questões de um único assunto.
+3. Cole as questões. Como na EAD, a alternativa **A** é a correta (o Moodle embaralha as alternativas na prova). O feedback depois de cada alternativa é opcional.
+4. Clique em **Baixar**. Se alguma questão estiver errada (sem alternativa A, com menos de duas alternativas ou com número repetido), a ferramenta avisa e não gera o arquivo.
+5. No AVA Prova, no banco de questões da sala de seleção: **Importar → Formato Moodle XML**, com **"Obter categoria do arquivo"** marcado. As questões entram na pasta `Português/Assunto 03` (ou a do assunto escolhido), criada se não existir.
+
+### O que muda em relação ao modo da EAD
+
+| | EAD-PE | Seleção |
+|---|---|---|
+| Nome da questão | `AS01_Q01` (repete a cada lote) | `2027.1_SUB_POR_A03_Q01`: único |
+| Formato | GIFT ou Moodle XML | Sempre Moodle XML estilizado |
+| Pasta de destino | Escolhida na importação | No próprio arquivo (`top/Português/Assunto 03`) |
+| Código no enunciado | Não | Sim: `Código da questão: ...`, no início |
+| Conferência antes de gerar | Não | Sim |
+
+**Por que o código aparece no enunciado:** cada candidato recebe uma questão sorteada de cada assunto, então "questão 5" não identifica a questão no recurso contra o gabarito. A revisão do Moodle não mostra o nome da questão; por isso o código vai no texto.
+
+**Numeração:** o número da questão vem da entrada (`1)`, `2)`...). Em lotes diferentes do mesmo assunto, continue a numeração (o segundo lote começa onde o primeiro parou), para os códigos não se repetirem.
+
+### SCSS no tema OBIN
+
+Cole no campo **"SCSS bruto"** do OBIN (`Administração do site → Aparência → Temas → OBIN`, campo `scss`) o mesmo SCSS do Moove da EAD-PE (seção 8), mais a classe do código da questão:
+
+```css
+.questao-codigo {
+  font-size: 0.85rem;
+  color: #4a5568;
+  margin: 0 0 4px 0;
+}
+```
+
+Depois de salvar, se a aparência não mudar: **Desenvolvimento → Limpar todos os caches**. Confira uma questão no celular: o ajuste de rolagem para telas pequenas foi feito para o Moove.
+
+### Sigilo
+
+As questões são sigilosas até a prova. A conversão roda só no navegador (nada é enviado a servidor), e a página não carrega mais scripts de fora: o Bootstrap está em `vendor/`. Para preparar provas, prefira abrir a cópia local (`questionario.html` no seu computador) a usar a versão publicada.
+
+### Correções que valem para os dois modos
+
+- **Feedback opcional:** antes, uma alternativa sem feedback fazia a linha seguinte (a próxima alternativa ou a próxima questão) virar feedback, e alternativas ou questões sumiam.
+- **Questão sem alternativa A:** antes, ela se fundia com a questão seguinte.
+- **`<` e `&` no texto:** no Moodle XML, "x<3" virava início de tag e sumia na importação; agora o texto é escapado.

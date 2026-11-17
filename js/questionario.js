@@ -13,6 +13,11 @@ const MAPA_ROTULOS = {
     'noa': 'NOA'
 };
 
+// Modo seleção (AVA Prova): códigos usados no nome único de cada questão.
+const MODALIDADES = { INT: 'Integrado', SUB: 'Subsequente', EAD: 'EAD' };
+const MATERIAS = { POR: 'Português', MAT: 'Matemática' };
+const QUANTIDADE_DE_ASSUNTOS = 10;
+
 // Questão: "1) ", "1. ", "1 - ", "QUESTÃO 08", "Questão 10" etc.
 const REGEX_INICIO_QUESTAO = /^(?:quest[ãa]o\s+(\d+)\s*|(\d+)\s*[\)\.\-–]\s+)/i;
 
@@ -21,7 +26,39 @@ const remover_excesso_de_espacos = (texto) => {
 
 };
 
-const ajustar_texto = (arr_entrada, competencia) => {
+/**
+ * Desfaz o escape do GIFT (feito em ajustar_texto) para o texto voltar a ser o
+ * que o professor escreveu, antes de ir para o HTML do Moodle XML.
+ * @param {string} texto - Texto com as entidades do GIFT (&equals;, &tilde; ...).
+ * @returns {string} Texto original.
+ */
+const desfazer_escape_gift = (texto) => {
+    return texto
+        .replaceAll('&colon;&colon;', '::')
+        .replaceAll('&equals;', '=')
+        .replaceAll('&tilde;', '~')
+        .replaceAll('&lbrace;', '{')
+        .replaceAll('&rbrace;', '}')
+        .replaceAll('&num;', '#');
+};
+
+/**
+ * Escapa &, < e > para o texto entrar no HTML do Moodle XML como texto.
+ * Sem isso, "x<3" vira início de tag e some na importação, e "]]>" quebraria o CDATA.
+ * @param {string} texto - Texto puro.
+ * @returns {string} Texto seguro para HTML.
+ */
+const escapar_html = (texto) => {
+    return texto
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+};
+
+// Texto que veio do GIFT, pronto para o HTML do Moodle XML.
+const texto_para_html = (texto) => escapar_html(desfazer_escape_gift(texto));
+
+const ajustar_texto = (arr_entrada, prefixo) => {
     
     // Remover excesso de espaços, linhas vazias e marcações de nível de dificuldade.
     let index = 0;
@@ -98,14 +135,13 @@ const ajustar_texto = (arr_entrada, competencia) => {
         }
     }
 
-    // Adicionar a competência ou NOA e, o número da questão.
+    // Adicionar o prefixo (rótulo da EAD ou código da seleção) e o número da questão.
     for (let i = 0; i < arr_entrada.length; i++) {
         let match = arr_entrada[i].match(REGEX_INICIO_QUESTAO);
-        
+
         if (match) {
             let num = match[1] || match[2];
             let j = parseInt(num, 10);
-            let prefixo = MAPA_ROTULOS[competencia] || 'Q';
             let numero_questao = (j < 10) ? '0' + j : j;
             
             arr_entrada[i] = arr_entrada[i].replace(match[0], `::${prefixo}_Q${numero_questao}::`);
@@ -114,7 +150,7 @@ const ajustar_texto = (arr_entrada, competencia) => {
 
     // Adicionar o símbolo de abertura de chave ({) antes da primeira alternativa da
     // questão (= ou ~). Abrir só antes do "=" fundia a questão sem alternativa
-    // correta com a seguinte.
+    // correta com a seguinte, e a conferência da seleção não percebia.
     index = 0;
     while (index < arr_entrada.length) {
         let eh_alternativa = ['=', '~'].includes(arr_entrada[index][0]);
@@ -160,9 +196,9 @@ const ajustar_texto = (arr_entrada, competencia) => {
  * - .pergunta-texto: estiliza o enunciado da questão.
  * - .resposta-card: estiliza cada alternativa de resposta.
  * @param {string[]} arr_saida - Array de linhas no formato GIFT puro (saída de ajustar_texto).
- * @returns {string} String XML completa no formato Moodle XML.
+ * @returns {object[]} Questões: { titulo, textoLinhas, alternativas: [{ correta, texto, feedback }] }.
  */
-const gerar_moodle_xml = (arr_saida) => {
+const extrair_questoes = (arr_saida) => {
 
     // Array para armazenar as questões extraídas do GIFT.
     let questoes = [];
@@ -256,25 +292,78 @@ const gerar_moodle_xml = (arr_saida) => {
         }
     }
 
+    return questoes;
+
+};
+
+/**
+ * Confere as questões antes de gerar o arquivo da seleção: cada uma precisa de
+ * exatamente uma alternativa correta e de ao menos duas alternativas, e o número
+ * da questão não pode se repetir (o nome é o código que o candidato cita no recurso).
+ * @param {object[]} questoes - Saída de extrair_questoes.
+ * @returns {string[]} Problemas encontrados (vazio quando está tudo certo).
+ */
+const conferir_questoes = (questoes) => {
+
+    let problemas = [];
+    let vistos = new Set();
+
+    if (questoes.length === 0) problemas.push('Nenhuma questão encontrada. Confira a numeração ("1) ", "2. " ...).');
+
+    for (let q of questoes) {
+        let corretas = q.alternativas.filter((alt) => alt.correta).length;
+        if (corretas !== 1) problemas.push(`${q.titulo}: ${corretas} alternativas corretas (precisa ser exatamente 1, a letra A).`);
+        if (q.alternativas.length < 2) problemas.push(`${q.titulo}: só ${q.alternativas.length} alternativa(s).`);
+        if (vistos.has(q.titulo)) problemas.push(`${q.titulo}: número de questão repetido.`);
+        vistos.add(q.titulo);
+    }
+
+    return problemas;
+
+};
+
+/**
+ * Gera o Moodle XML com HTML estilizado.
+ * @param {object[]} questoes - Saída de extrair_questoes.
+ * @param {object} opcoes - { categoria: caminho da pasta ou null, mostrarCodigo: mostra o nome da questão ao candidato }.
+ * @returns {string} String XML completa no formato Moodle XML.
+ */
+const gerar_moodle_xml = (questoes, opcoes = {}) => {
+
     // Construir o XML no formato Moodle XML.
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
     xml += '<quiz>\n';
 
+    // Pasta de destino: sem o contexto ($course$ etc.), o Moodle cria a pasta no
+    // banco de questões em que a importação é feita.
+    if (opcoes.categoria) {
+        xml += '  <question type="category">\n';
+        xml += '    <category>\n';
+        xml += `      <text>${escapar_html(opcoes.categoria)}</text>\n`;
+        xml += '    </category>\n';
+        xml += '  </question>\n';
+    }
+
     for (let q of questoes) {
 
         // Unir linhas do enunciado com <br> para manter quebras de linha.
-        let textoHTML = q.textoLinhas.join('<br>');
+        let textoHTML = q.textoLinhas.map(texto_para_html).join('<br>');
+
+        // Código da questão visível ao candidato (a revisão do Moodle não mostra o nome).
+        let codigoHTML = opcoes.mostrarCodigo
+            ? `<p class="questao-codigo">Código da questão: ${escapar_html(q.titulo)}</p>`
+            : '';
 
         xml += '  <question type="multichoice">\n';
 
         // Nome/título da questão.
         xml += '    <name>\n';
-        xml += `      <text>${q.titulo}</text>\n`;
+        xml += `      <text>${escapar_html(q.titulo)}</text>\n`;
         xml += '    </name>\n';
 
         // Texto da pergunta com HTML estilizado (classe pergunta-texto).
         xml += '    <questiontext format="html">\n';
-        xml += `      <text><![CDATA[<div class="pergunta-texto">${textoHTML}</div>]]></text>\n`;
+        xml += `      <text><![CDATA[${codigoHTML}<div class="pergunta-texto">${textoHTML}</div>]]></text>\n`;
         xml += '    </questiontext>\n';
 
         // Feedback geral (vazio).
@@ -315,9 +404,9 @@ const gerar_moodle_xml = (arr_saida) => {
             let fraction = alt.correta ? '100' : '0';
 
             xml += `    <answer fraction="${fraction}" format="html">\n`;
-            xml += `      <text><![CDATA[<div class="resposta-card">${alt.texto}</div>]]></text>\n`;
+            xml += `      <text><![CDATA[<div class="resposta-card">${texto_para_html(alt.texto)}</div>]]></text>\n`;
             xml += '      <feedback format="html">\n';
-            xml += `        <text><![CDATA[${alt.feedback}]]></text>\n`;
+            xml += `        <text><![CDATA[${texto_para_html(alt.feedback)}]]></text>\n`;
             xml += '      </feedback>\n';
             xml += '    </answer>\n';
         }
@@ -330,6 +419,22 @@ const gerar_moodle_xml = (arr_saida) => {
     return xml;
 
 };
+
+const select_modo = document.querySelector('#modo');
+
+const div_campos_ead = document.querySelector('#campos-ead');
+
+const div_campos_selecao = document.querySelector('#campos-selecao');
+
+const input_selecao = document.querySelector('#selecao');
+
+const select_modalidade = document.querySelector('#modalidade');
+
+const select_materia = document.querySelector('#materia');
+
+const select_assunto = document.querySelector('#assunto');
+
+const checkbox_incluir_pasta = document.querySelector('#incluir-pasta');
 
 const select_competencia = document.querySelector('#competencia');
 
@@ -354,19 +459,49 @@ const div_mais_ferramentas = document.querySelector('div.mais-ferramentas');
 
 const button_baixar = document.querySelector('#baixar');
 
+const modo_selecao = () => select_modo.value === 'selecao';
+
+// Assuntos 01 a 10 no seletor do modo seleção.
+for (let n = 1; n <= QUANTIDADE_DE_ASSUNTOS; n++) {
+    let codigo = String(n).padStart(2, '0');
+    select_assunto.add(new Option(`Assunto ${codigo}`, codigo));
+}
+
+/**
+ * Lê os campos do modo seleção.
+ * @returns {object} { erro } ou { prefixo: "2027.1_SUB_POR_A03", categoria: "top/Português/Assunto 03" }.
+ */
+const ler_campos_selecao = () => {
+
+    let selecao = input_selecao.value.trim();
+    if (!/^\d{4}\.\d$/.test(selecao)) return { erro: 'Informe a seleção no formato ano.semestre, por exemplo 2027.1.' };
+
+    let materia = select_materia.value;
+    let assunto = select_assunto.value;
+
+    return {
+        prefixo: `${selecao}_${select_modalidade.value}_${materia}_A${assunto}`,
+        categoria: `top/${MATERIAS[materia]}/Assunto ${assunto}`,
+    };
+
+};
+
 const baixar_arquivo = () => {
 
     let texto = textarea_saida.value;
-    
+
     let link = document.createElement('a');
 
-    // Definir MIME type e extensão conforme o modo de exportação.
-    let mimeType = checkbox_estilizar.checked ? 'text/xml' : 'text/plain';
-    let extensao = checkbox_estilizar.checked ? 'xml' : 'txt';
-    let prefixo = MAPA_ROTULOS[select_competencia.value.toLowerCase()] || select_competencia.value;
+    // Definir MIME type, extensão e nome conforme o modo de exportação.
+    let xml = modo_selecao() || checkbox_estilizar.checked;
+    let mimeType = xml ? 'text/xml' : 'text/plain';
+    let extensao = xml ? 'xml' : 'txt';
+    let nome = modo_selecao()
+        ? `selecao_${ler_campos_selecao().prefixo}`
+        : `questionario_${MAPA_ROTULOS[select_competencia.value.toLowerCase()] || select_competencia.value}`;
 
     link.href = `data:${mimeType};charset=utf-8,` + encodeURIComponent(texto);
-    link.download = `questionario_${prefixo}.${extensao}`;
+    link.download = `${nome}.${extensao}`;
 
     document.body.appendChild(link);
     link.click();
@@ -411,6 +546,18 @@ textarea_entrada.placeholder = [
 ].join('\n');
 
 const atualizar_placeholder = () => {
+    if (modo_selecao()) {
+        let campos = ler_campos_selecao();
+        let exemplo = campos.prefixo || '2027.1_SUB_POR_A03';
+        textarea_saida.placeholder = [
+            'O arquivo Moodle XML aparece aqui.',
+            '',
+            `Cada questão recebe o código ${exemplo}_Q01, ${exemplo}_Q02 ...,`,
+            'mostrado ao candidato no início da questão.',
+        ].join('\n');
+        return;
+    }
+
     let valor_selecionado = select_competencia.value.toLowerCase();
     let prefixo = MAPA_ROTULOS[valor_selecionado] || 'Q';
 
@@ -452,20 +599,64 @@ const atualizar_placeholder = () => {
     ].join('\n');
 };
 
-// Atualiza imediatamente e também a cada mudança no select
-atualizar_placeholder();
+// Mostra os campos do modo escolhido e limpa a saída do modo anterior.
+const atualizar_modo = () => {
+    div_campos_ead.classList.toggle('oculto', modo_selecao());
+    div_campos_selecao.classList.toggle('oculto', !modo_selecao());
+    textarea_saida.value = '';
+    atualizar_placeholder();
+};
+
+// Atualiza imediatamente e também a cada mudança nos campos
+atualizar_modo();
+select_modo.addEventListener('change', atualizar_modo);
 select_competencia.addEventListener('change', atualizar_placeholder);
+[input_selecao, select_modalidade, select_materia, select_assunto].forEach((campo) => {
+    campo.addEventListener('input', atualizar_placeholder);
+});
+
+// Gera a saída do modo seleção. Devolve false quando há algo a corrigir.
+const processar_selecao = (arr_entrada) => {
+
+    let campos = ler_campos_selecao();
+    if (campos.erro) {
+        alert(campos.erro);
+        return false;
+    }
+
+    let questoes = extrair_questoes(ajustar_texto(arr_entrada, campos.prefixo));
+    let problemas = conferir_questoes(questoes);
+    if (problemas.length > 0) {
+        textarea_saida.value = '';
+        alert('Corrija antes de gerar o arquivo:\n\n' + problemas.join('\n'));
+        return false;
+    }
+
+    textarea_saida.value = gerar_moodle_xml(questoes, {
+        categoria: checkbox_incluir_pasta.checked ? campos.categoria : null,
+        mostrarCodigo: true,
+    });
+    return true;
+
+};
 
 button_processar.addEventListener('click', () => {
 
     if (textarea_entrada.value !== '') {
 
         let arr_entrada = textarea_entrada.value.split('\n');
-        arr_entrada = ajustar_texto(arr_entrada, select_competencia.value.toLowerCase());
+
+        if (modo_selecao()) {
+            processar_selecao(arr_entrada);
+            return;
+        }
+
+        let prefixo = MAPA_ROTULOS[select_competencia.value.toLowerCase()] || 'Q';
+        arr_entrada = ajustar_texto(arr_entrada, prefixo);
 
         // Gerar Moodle XML com HTML estilizado ou GIFT puro.
         if (checkbox_estilizar.checked) {
-            textarea_saida.value = gerar_moodle_xml(arr_entrada);
+            textarea_saida.value = gerar_moodle_xml(extrair_questoes(arr_entrada));
         } else {
             textarea_saida.value = arr_entrada.join('\n');
         }

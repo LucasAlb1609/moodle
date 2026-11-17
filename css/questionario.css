@@ -17,7 +17,8 @@ label {
     font-weight: bold;
 }
 
-select {
+select,
+#selecao {
     padding: 10px;
 }
 
@@ -54,4 +55,14 @@ input + input {
 footer p {
     padding: 20px 0;
     text-align: center;
+}
+
+/* Campos do modo que não está em uso (EAD ou seleção). */
+.oculto {
+    display: none;
+}
+
+.aviso-selecao {
+    margin: 10px 0 0 0;
+    font-size: 0.95rem;
 }
