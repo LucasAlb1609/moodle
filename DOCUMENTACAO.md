@@ -13,7 +13,7 @@
 9. [Pré-requisitos no Moodle](#9-pré-requisitos-no-moodle)
 10. [Exemplos Completos](#10-exemplos-completos)
 11. [Solução de Problemas](#11-solução-de-problemas)
-12. [Modo Seleção (AVA Prova, tema OBIN)](#12-modo-seleção-ava-prova-tema-obin)
+12. [Modo Seleção (AVA Prova)](#12-modo-seleção-ava-prova)
 
 ---
 
@@ -523,9 +523,9 @@ Incorreto. Netuno é o quarto maior.
 
 ---
 
-## 12. Modo Seleção (AVA Prova, tema OBIN)
+## 12. Modo Seleção (AVA Prova)
 
-Para as provas dos processos seletivos do SisSel, aplicadas no **AVA Prova** (Moodle 5.3, tema OBIN). As questões ficam com a **mesma aparência** das da EAD-PE.
+Para as provas dos processos seletivos do SisSel, aplicadas no **AVA Prova** (Moodle 5.3, tema Moove, como a EAD-PE). As questões ficam com a **mesma aparência** das da EAD-PE.
 
 ### Como usar
 
@@ -549,9 +549,9 @@ Para as provas dos processos seletivos do SisSel, aplicadas no **AVA Prova** (Mo
 
 **Numeração:** o número da questão vem da entrada (`1)`, `2)`...). Em lotes diferentes do mesmo assunto, continue a numeração (o segundo lote começa onde o primeiro parou), para os códigos não se repetirem.
 
-### SCSS no tema OBIN
+### SCSS no Moove do AVA Prova
 
-Cole no campo **"SCSS bruto"** do OBIN (`Administração do site → Aparência → Temas → OBIN`, campo `scss`) o mesmo SCSS do Moove da EAD-PE (seção 8), mais a classe do código da questão:
+No AVA Prova, o campo **"SCSS puro"** do Moove (`Administração do site → Aparência → Tema Moove → Avançado → SCSS puro`) recebe o mesmo SCSS da EAD-PE (seção 8), mais a classe do código da questão:
 
 ```css
 .questao-codigo {
@@ -561,7 +561,7 @@ Cole no campo **"SCSS bruto"** do OBIN (`Administração do site → Aparência 
 }
 ```
 
-Depois de salvar, se a aparência não mudar: **Desenvolvimento → Limpar todos os caches**. Confira uma questão no celular: o ajuste de rolagem para telas pequenas foi feito para o Moove.
+Depois de salvar, se a aparência não mudar: **Desenvolvimento → Limpar todos os caches**. Confira uma questão no celular, já que os candidatos também fazem a prova pelo navegador do celular.
 
 ### Sigilo
 
