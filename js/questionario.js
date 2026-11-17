@@ -13,6 +13,9 @@ const MAPA_ROTULOS = {
     'noa': 'NOA'
 };
 
+// Questão: "1) ", "1. ", "1 - ", "QUESTÃO 08", "Questão 10" etc.
+const REGEX_INICIO_QUESTAO = /^(?:quest[ãa]o\s+(\d+)\s*|(\d+)\s*[\)\.\-–]\s+)/i;
+
 const remover_excesso_de_espacos = (texto) => {
     return texto.replaceAll('  ', ' ').trim();
 
@@ -83,18 +86,21 @@ const ajustar_texto = (arr_entrada, competencia) => {
         }
     });
 
-    // Adicionar o símbolo de hashtag (#) nos comentários.
+    // Adicionar o símbolo de hashtag (#) nos comentários: a linha logo após uma
+    // alternativa, desde que não seja outra alternativa nem o início da próxima
+    // questão (o comentário é opcional; sem ele, a questão seguinte se perdia).
     for (let i = 1; i < arr_entrada.length; i++) {
-        if (['=', '~'].includes(arr_entrada[i - 1][0])) {
+        let anterior_eh_alternativa = ['=', '~'].includes(arr_entrada[i - 1][0]);
+        let atual_eh_alternativa = ['=', '~'].includes(arr_entrada[i][0]);
+        let atual_eh_questao = REGEX_INICIO_QUESTAO.test(arr_entrada[i]);
+        if (anterior_eh_alternativa && !atual_eh_alternativa && !atual_eh_questao) {
             arr_entrada[i] = '#' + arr_entrada[i];
         }
     }
 
     // Adicionar a competência ou NOA e, o número da questão.
     for (let i = 0; i < arr_entrada.length; i++) {
-        // Regex para identificar início de questão: "1) ", "1. ", "QUESTÃO 08", "Questão 10", etc.
-        let regex = /^(?:quest[ãa]o\s+(\d+)\s*|(\d+)\s*[\)\.\-–]\s+)/i;
-        let match = arr_entrada[i].match(regex);
+        let match = arr_entrada[i].match(REGEX_INICIO_QUESTAO);
         
         if (match) {
             let num = match[1] || match[2];
@@ -106,10 +112,14 @@ const ajustar_texto = (arr_entrada, competencia) => {
         }
     }
 
-    // Adicionar o símbolo de abertura de chave ({) na linha anterior ao símbolo de igual (=).
+    // Adicionar o símbolo de abertura de chave ({) antes da primeira alternativa da
+    // questão (= ou ~). Abrir só antes do "=" fundia a questão sem alternativa
+    // correta com a seguinte.
     index = 0;
     while (index < arr_entrada.length) {
-        if (arr_entrada[index][0] === '=') {
+        let eh_alternativa = ['=', '~'].includes(arr_entrada[index][0]);
+        let anterior = index > 0 ? arr_entrada[index - 1][0] : '';
+        if (eh_alternativa && !['=', '~', '#'].includes(anterior)) {
             arr_entrada.splice(index, 0, '{');
             index += 2;
         } else {
